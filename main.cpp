@@ -86,7 +86,49 @@ int main()
 
 
 	// START CAPTURE
+	//struct v4l2_buffer bufferinfo;
+	memset(&bufferinfo, 0, sizeof(bufferinfo));
+	bufferinfo.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+	bufferinfo.memory = V4L2_MEMORY_MMAP;
+	bufferinfo.index = 0; /* Queueing buffer index 0. */
 
+	// Activate streaming
+	int type = bufferinfo.type;
+	if(ioctl(fd, VIDIOC_STREAMON, &type) < 0){
+	    perror("VIDIOC_STREAMON");
+	    exit(1);
+	}
+
+for(int i=0; i!=10; i++)
+{
+	// Put the buffer in the incoming queue.
+	if(ioctl(fd, VIDIOC_QBUF, &bufferinfo) < 0){
+	    perror("VIDIOC_QBUF");
+	    exit(1);
+	}
+
+	// The buffer's waiting in the outgoing queue.
+	if(ioctl(fd, VIDIOC_DQBUF, &bufferinfo) < 0){
+	    perror("VIDIOC_QBUF");
+	    exit(1);
+	}
+
+	// Frame retrieved, do something
+	int jpgfile;
+	if((jpgfile = open("myimage.jpeg", O_WRONLY | O_CREAT, 0660)) < 0){
+	    perror("open");
+	    exit(1);
+	}
+	 
+	write(jpgfile, buffer_start, bufferinfo.length);
+	close(jpgfile);
+}
+
+	// Deactivate streaming
+	if(ioctl(fd, VIDIOC_STREAMOFF, &type) < 0){
+	    perror("VIDIOC_STREAMOFF");
+	    exit(1);
+	}
 
 	// END CAPTURE
 
