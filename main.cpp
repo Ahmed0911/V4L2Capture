@@ -14,24 +14,23 @@
 
 int main()
 {	
-	// open device
+	// Open device
 	int fd = open(DEV, O_RDWR);
 	if( fd < 0 ) 
 	{
 		perror("Error opening device");
 		exit(1);
 	}
-
 	printf("Device %s Open\n", DEV);
 
-	// retrieve capabilities
+
+	// Retrieve capabilities
 	struct v4l2_capability cap;
 	if(ioctl(fd, VIDIOC_QUERYCAP, &cap) < 0)
 	{
 	    perror("VIDIOC_QUERYCAP");
 	    exit(1);
 	}
-
 	// dump info
 	printf("Driver: %s\n", cap.driver);
 	printf("Card: %s\n", cap.card);
@@ -41,7 +40,7 @@ int main()
 	printf("Streaming Capability: %s\n", cap.capabilities & V4L2_CAP_STREAMING ? "YES":"NO");
 
 
-	// set capture format
+	// Set capture format
 	// for available see: #v4l2-ctl -d /dev/video0 --list-formats-ext
 	struct v4l2_format format;
 	format.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
@@ -53,7 +52,8 @@ int main()
 	    exit(1);
 	}
 
-	// inform device about buffers
+
+	// Inform device about buffers to allocate
 	struct v4l2_requestbuffers bufrequest;
 	bufrequest.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 	bufrequest.memory = V4L2_MEMORY_MMAP;
@@ -64,7 +64,7 @@ int main()
 	    exit(1);
 	}
 
-	// Alocate buffers
+	// Allocate buffers
 	struct v4l2_buffer bufferinfo;
 	memset(&bufferinfo, 0, sizeof(bufferinfo));
 	bufferinfo.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
@@ -75,62 +75,84 @@ int main()
 	    perror("VIDIOC_QUERYBUF");
 	    exit(1);
 	}
-
+	// get device mapped pointer (
 	void* buffer_start = mmap( NULL, bufferinfo.length, PROT_READ | PROT_WRITE, MAP_SHARED, fd, bufferinfo.m.offset);
 	if(buffer_start == MAP_FAILED){
 	    perror("mmap");
 	    exit(1);
 	}
-	// clear frame
+
+
+	// Clear frame buffer
 	memset(buffer_start, 0, bufferinfo.length);
 
+	
 
 	// START CAPTURE
+
+	// Queue First Buffer
 	//struct v4l2_buffer bufferinfo;
 	memset(&bufferinfo, 0, sizeof(bufferinfo));
 	bufferinfo.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 	bufferinfo.memory = V4L2_MEMORY_MMAP;
 	bufferinfo.index = 0; /* Queueing buffer index 0. */
+	if(ioctl(fd, VIDIOC_QBUF, &bufferinfo) < 0)
+	{
+	    perror("VIDIOC_QBUF");
+	    exit(1);
+	}
 
 	// Activate streaming
 	int type = bufferinfo.type;
-	if(ioctl(fd, VIDIOC_STREAMON, &type) < 0){
+	if(ioctl(fd, VIDIOC_STREAMON, &type) < 0)
+	{
 	    perror("VIDIOC_STREAMON");
 	    exit(1);
 	}
+	
+	// Main Loop
+	for(int i=0; i!=100; i++)
+	{
+		// Get Filled Buffer
+		if(ioctl(fd, VIDIOC_DQBUF, &bufferinfo) < 0)
+		{
+		    perror("VIDIOC_DQBUF");
+		    exit(1);
+		}
 
-for(int i=0; i!=10; i++)
-{
-	// Put the buffer in the incoming queue.
-	if(ioctl(fd, VIDIOC_QBUF, &bufferinfo) < 0){
-	    perror("VIDIOC_QBUF");
-	    exit(1);
-	}
-
-	// The buffer's waiting in the outgoing queue.
-	if(ioctl(fd, VIDIOC_DQBUF, &bufferinfo) < 0){
-	    perror("VIDIOC_QBUF");
-	    exit(1);
-	}
-
-	// Frame retrieved, do something
-	int jpgfile;
-	if((jpgfile = open("myimage.jpeg", O_WRONLY | O_CREAT, 0660)) < 0){
-	    perror("open");
-	    exit(1);
-	}
-	 
-	write(jpgfile, buffer_start, bufferinfo.length);
-	close(jpgfile);
-}
+		// Frame retrieved, do something
+		printf("Image size: %d\n", bufferinfo.bytesused);
+		/*int jpgfile;
+		if((jpgfile = open("myimage.jpeg", O_WRONLY | O_CREAT, 0660)) < 0){
+		    perror("open");
+		    exit(1);
+		}
+		write(jpgfile, buffer_start, bufferinfo.length);
+		close(jpgfile);*/
+		
+		// Queue next buffer (i.e. release retrieved buffer)
+		// Index is the same as DQ buffer
+		bufferinfo.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+		bufferinfo.memory = V4L2_MEMORY_MMAP;
+		if(ioctl(fd, VIDIOC_QBUF, &bufferinfo) < 0)
+		{
+		    perror("VIDIOC_QBUF");
+		    exit(1);
+		}
+	}	
 
 	// Deactivate streaming
-	if(ioctl(fd, VIDIOC_STREAMOFF, &type) < 0){
+	if(ioctl(fd, VIDIOC_STREAMOFF, &type) < 0)
+	{
 	    perror("VIDIOC_STREAMOFF");
 	    exit(1);
 	}
 
 	// END CAPTURE
+
+
+	// release buffers
+	munmap(buffer_start, bufferinfo.length);
 
 	close(fd);
 	printf("Device %s Closed\n", DEV);
