@@ -11,6 +11,7 @@
 //#include <sys/stat.h>
 
 #define DEV "/dev/video0"
+#define NUMOFBUFFERS 5
 
 int main()
 {	
@@ -57,79 +58,97 @@ int main()
 	struct v4l2_requestbuffers bufrequest;
 	bufrequest.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 	bufrequest.memory = V4L2_MEMORY_MMAP;
-	bufrequest.count = 1; // one buffer
+	bufrequest.count = NUMOFBUFFERS; // Two buffers
 	 
 	if(ioctl(fd, VIDIOC_REQBUFS, &bufrequest) < 0){
 	    perror("VIDIOC_REQBUFS");
 	    exit(1);
 	}
 
-	// Allocate buffers
-	struct v4l2_buffer bufferinfo;
-	memset(&bufferinfo, 0, sizeof(bufferinfo));
-	bufferinfo.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-	bufferinfo.memory = V4L2_MEMORY_MMAP;
-	bufferinfo.index = 0;
-	 
-	if(ioctl(fd, VIDIOC_QUERYBUF, &bufferinfo) < 0){
-	    perror("VIDIOC_QUERYBUF");
-	    exit(1);
+	void* imageBuffer[NUMOFBUFFERS];
+	int imageBufferLength = 0;
+
+	for(int bufidx = 0; bufidx != NUMOFBUFFERS; bufidx++ )
+	{
+		// Allocate buffers
+		struct v4l2_buffer bufferinfo;
+		memset(&bufferinfo, 0, sizeof(bufferinfo));
+		bufferinfo.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+		bufferinfo.memory = V4L2_MEMORY_MMAP;
+		bufferinfo.index = bufidx;
+		 
+		if(ioctl(fd, VIDIOC_QUERYBUF, &bufferinfo) < 0)
+		{
+		    perror("VIDIOC_QUERYBUF");
+		    exit(1);
+		}
+
+		// get device mapped pointer
+		imageBuffer[bufidx] = mmap( NULL, bufferinfo.length, PROT_READ | PROT_WRITE, MAP_SHARED, fd, bufferinfo.m.offset);
+		if(imageBuffer[bufidx] == MAP_FAILED)
+		{
+		    perror("mmap");
+		    exit(1);
+		}
+		imageBufferLength = bufferinfo.length; // assume all buffer os same length, used only for unmap
+
+		// Clear frame buffer
+		memset(imageBuffer[bufidx], 0, bufferinfo.length);
+
+		printf("Allocated Idx: %d, Size: %d\n", bufferinfo.index, bufferinfo.length);
 	}
-	// get device mapped pointer (
-	void* buffer_start = mmap( NULL, bufferinfo.length, PROT_READ | PROT_WRITE, MAP_SHARED, fd, bufferinfo.m.offset);
-	if(buffer_start == MAP_FAILED){
-	    perror("mmap");
-	    exit(1);
-	}
 
 
-	// Clear frame buffer
-	memset(buffer_start, 0, bufferinfo.length);
-
-	
 
 	// START CAPTURE
 
-	// Queue First Buffer
-	//struct v4l2_buffer bufferinfo;
-	memset(&bufferinfo, 0, sizeof(bufferinfo));
-	bufferinfo.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-	bufferinfo.memory = V4L2_MEMORY_MMAP;
-	bufferinfo.index = 0; /* Queueing buffer index 0. */
-	if(ioctl(fd, VIDIOC_QBUF, &bufferinfo) < 0)
+	// Queue First Buffers
+	for(int bufidx = 0; bufidx != NUMOFBUFFERS; bufidx++ )
 	{
-	    perror("VIDIOC_QBUF");
-	    exit(1);
+		struct v4l2_buffer bufferinfo;
+		memset(&bufferinfo, 0, sizeof(bufferinfo));
+		bufferinfo.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+		bufferinfo.memory = V4L2_MEMORY_MMAP;
+		bufferinfo.index = bufidx;
+		if(ioctl(fd, VIDIOC_QBUF, &bufferinfo) < 0)
+		{
+		    perror("VIDIOC_QBUF");
+		    exit(1);
+		}
 	}
 
 	// Activate streaming
-	int type = bufferinfo.type;
+	int type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 	if(ioctl(fd, VIDIOC_STREAMON, &type) < 0)
 	{
 	    perror("VIDIOC_STREAMON");
 	    exit(1);
-	}
-	
+	}	
+
 	// Main Loop
 	for(int i=0; i!=100; i++)
 	{
 		// Get Filled Buffer
-		if(ioctl(fd, VIDIOC_DQBUF, &bufferinfo) < 0)
+		struct v4l2_buffer bufferinfo;
+		memset(&bufferinfo, 0, sizeof(bufferinfo));
+		bufferinfo.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+		bufferinfo.memory = V4L2_MEMORY_MMAP;
+		if(ioctl(fd, VIDIOC_DQBUF, &bufferinfo) < 0) // index will be filled by ioctrl
 		{
 		    perror("VIDIOC_DQBUF");
 		    exit(1);
 		}
 
 		// Frame retrieved, do something
-		printf("Image size: %d\n", bufferinfo.bytesused);
+		printf("Buffer: %d, Image size: %d, Sequence: %d\n", bufferinfo.index, bufferinfo.bytesused, bufferinfo.sequence);
 		/*int jpgfile;
 		if((jpgfile = open("myimage.jpeg", O_WRONLY | O_CREAT, 0660)) < 0){
 		    perror("open");
 		    exit(1);
 		}
 		write(jpgfile, buffer_start, bufferinfo.length);
-		close(jpgfile);*/
-		
+		close(jpgfile);*/		
+
 		// Queue next buffer (i.e. release retrieved buffer)
 		// Index is the same as DQ buffer
 		bufferinfo.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
@@ -152,7 +171,10 @@ int main()
 
 
 	// release buffers
-	munmap(buffer_start, bufferinfo.length);
+	for(int bufidx = 0; bufidx != NUMOFBUFFERS; bufidx++ )
+	{
+		munmap(imageBuffer[bufidx], imageBufferLength);
+	}
 
 	close(fd);
 	printf("Device %s Closed\n", DEV);
