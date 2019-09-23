@@ -45,7 +45,8 @@ int main()
 	// for available see: #v4l2-ctl -d /dev/video0 --list-formats-ext
 	struct v4l2_format format;
 	format.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-	format.fmt.pix.pixelformat = V4L2_PIX_FMT_MJPEG;
+	//format.fmt.pix.pixelformat = V4L2_PIX_FMT_MJPEG;
+	format.fmt.pix.pixelformat = V4L2_PIX_FMT_H264;
 	format.fmt.pix.width = 640;
 	format.fmt.pix.height = 480;	 
 	if(ioctl(fd, VIDIOC_S_FMT, &format) < 0){
@@ -126,7 +127,7 @@ int main()
 	}	
 
 	// Main Loop
-	for(int i=0; i!=100; i++)
+	for(int i=0; i!=500; i++)
 	{
 		// Get Filled Buffer
 		struct v4l2_buffer bufferinfo;
