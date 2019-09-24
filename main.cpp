@@ -10,11 +10,20 @@
 //#include <sys/types.h>
 //#include <sys/stat.h>
 
+#include "tcpserver.h"
+
+#define SERVER_PORT 2000
+#define LOCAL_IP "192.168.0.30"
+
 #define DEV "/dev/video0"
 #define NUMOFBUFFERS 5
 
+
 int main()
-{	
+{
+	// Start Server
+	TCPServer server(LOCAL_IP, SERVER_PORT);	
+
 	// Open device
 	int fd = open(DEV, O_RDWR);
 	if( fd < 0 ) 
@@ -127,7 +136,7 @@ int main()
 	}	
 
 	// Main Loop
-	for(int i=0; i!=500; i++)
+	for(int i=0; i!=5000; i++)
 	{
 		// Get Filled Buffer
 		struct v4l2_buffer bufferinfo;
@@ -141,14 +150,10 @@ int main()
 		}
 
 		// Frame retrieved, do something
-		printf("Buffer: %d, Image size: %d, Sequence: %d\n", bufferinfo.index, bufferinfo.bytesused, bufferinfo.sequence);
-		/*int jpgfile;
-		if((jpgfile = open("myimage.jpeg", O_WRONLY | O_CREAT, 0660)) < 0){
-		    perror("open");
-		    exit(1);
-		}
-		write(jpgfile, buffer_start, bufferinfo.length);
-		close(jpgfile);*/		
+		//printf("Buffer: %d, Image size: %d, Sequence: %d\n", bufferinfo.index, bufferinfo.bytesused, bufferinfo.sequence);
+
+		// Send Data To Server
+		server.SendData(reinterpret_cast<uint8_t*>(imageBuffer[bufferinfo.index]), bufferinfo.bytesused);	
 
 		// Queue next buffer (i.e. release retrieved buffer)
 		// Index is the same as DQ buffer
