@@ -36,6 +36,7 @@ void TCPServer::SendData(uint8_t* buffer, uint32_t size)
 	ImageBuffer newBuffer;
 	newBuffer.ImagePtr = new uint8_t[size];
 	newBuffer.Size = size;
+	memcpy(newBuffer.ImagePtr, buffer, size);
 
 	m_FrameQueue.push(newBuffer);
 }
@@ -98,13 +99,13 @@ void TCPServer::WorkerThread(std::string interfaceIP, uint16_t localPort)
 				}
 				if( buffer.ImagePtr != nullptr )
 				{
-					int snt = send(clientSock, (char*)&buffer.ImagePtr, buffer.Size, MSG_NOSIGNAL); // MSG_NOSIGNAL - do not send SIGPIPE on close
-					std::cout << "Sending: " << buffer.Size << " bytes, sent: " << snt << " bytes" << std::endl;					
-					//if (snt <= 0) break; // error
+					int snt = send(clientSock, (char*)buffer.ImagePtr, buffer.Size, MSG_NOSIGNAL); // MSG_NOSIGNAL - do not send SIGPIPE on close
+					//std::cout << "Sending: " << buffer.Size << " bytes, sent: " << snt << " bytes" << std::endl;					
+					if (snt <= 0) break; // error, kill connection
 					m_TxCounter++;
 				}
 				
-				std::this_thread::sleep_for(std::chrono::milliseconds(100)); // TBD, DATA RATE
+				std::this_thread::sleep_for(std::chrono::milliseconds(1)); // TBD, DATA RATE
 			} while (1);
 		}
 

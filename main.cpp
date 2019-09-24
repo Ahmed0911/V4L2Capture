@@ -13,7 +13,7 @@
 #include "tcpserver.h"
 
 #define SERVER_PORT 2000
-#define LOCAL_IP "192.168.0.30"
+#define LOCAL_IP "192.168.0.10"
 
 #define DEV "/dev/video0"
 #define NUMOFBUFFERS 5
