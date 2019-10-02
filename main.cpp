@@ -12,7 +12,7 @@
 
 // Server
 #define TCPINTERFACE "0.0.0.0"
-#define TCPPORT 80
+#define TCPPORT 5000
 
 // Camera
 #define DEV "/dev/video0"
