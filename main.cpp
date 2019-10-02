@@ -151,7 +151,7 @@ int main()
 		}
 
 		// Frame retrieved, do something
-		printf("Buffer: %d, Image size: %d, Sequence: %d\n", bufferinfo.index, bufferinfo.bytesused, bufferinfo.sequence);
+		//printf("Buffer: %d, Image size: %d, Sequence: %d\n", bufferinfo.index, bufferinfo.bytesused, bufferinfo.sequence);
 
 		// Set some data
 		SClientData data;
