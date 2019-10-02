@@ -1,17 +1,21 @@
-#include "tcpserver.h"
+#include "TCPServer.h"
 #include <iostream>
 #include <memory.h>
 #include <chrono>
 #include <thread>
-#include <arpa/inet.h>
-#include <sys/socket.h>
-#include <netdb.h>
-#include <unistd.h>
 
-TCPServer::TCPServer(std::string interfaceIP, uint16_t localPort) : m_TxCounter(0), m_ListenSocket(-1)
+TCPServer::TCPServer(std::string interfaceIP, uint16_t localPort) : m_ListenSocket{ -1 }, m_Running{true}
 {
+#ifdef _WIN64
+	WSADATA wsaData;
+	if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0)
+	{
+		std::cout << "WSAStartup error" << std::endl;
+		return;
+	}
+#endif
+
 	// Start thread
-	m_Running = true;
 	m_WorkerThread = std::thread(&TCPServer::WorkerThread, this, interfaceIP, localPort);
 }
 
@@ -27,18 +31,6 @@ TCPServer::~TCPServer()
 		close(m_ListenSocket);
 		m_ListenSocket = -1;
 	}
-}
-
-void TCPServer::SendData(uint8_t* buffer, uint32_t size)
-{
-	std::lock_guard<std::mutex> lock(m_FrameQueueMutex);
-
-	ImageBuffer newBuffer;
-	newBuffer.ImagePtr = new uint8_t[size];
-	newBuffer.Size = size;
-	memcpy(newBuffer.ImagePtr, buffer, size);
-
-	m_FrameQueue.push(newBuffer);
 }
 
 void TCPServer::WorkerThread(std::string interfaceIP, uint16_t localPort)
@@ -58,7 +50,7 @@ void TCPServer::WorkerThread(std::string interfaceIP, uint16_t localPort)
 	localaddr.sin_port = htons(localPort); // listening port
 	localaddr.sin_addr.s_addr = inet_addr(interfaceIP.c_str());
 
-	if (bind(m_ListenSocket, (struct sockaddr *)&localaddr, sizeof(localaddr)) < 0)
+	if (bind(m_ListenSocket, (sockaddr *)&localaddr, sizeof(localaddr)) < 0)
 	{
 		std::cout << "bind failed" << std::endl;
 		return;
@@ -86,33 +78,23 @@ void TCPServer::WorkerThread(std::string interfaceIP, uint16_t localPort)
 			std::cout << "Connected from: " << inet_ntoa(clientaddr.sin_addr) << std::endl;
 			do
 			{
-				// Send Frame
-				ImageBuffer buffer{};
+				// Do all communication in parent object
+				if (clientCallback)
 				{
-					std::lock_guard<std::mutex> lock(m_FrameQueueMutex);
-					if( !m_FrameQueue.empty() )
-					{
-						buffer = m_FrameQueue.front();
-						m_FrameQueue.pop();	
-					}	
-					
+					bool ok = clientCallback(clientSock);
+					if (!ok) break;
 				}
-				if( buffer.ImagePtr != nullptr )
+				else
 				{
-					int snt = send(clientSock, (char*)buffer.ImagePtr, buffer.Size, MSG_NOSIGNAL); // MSG_NOSIGNAL - do not send SIGPIPE on close
-					//std::cout << "Sending: " << buffer.Size << " bytes, sent: " << snt << " bytes" << std::endl;					
-					if (snt <= 0) break; // error, kill connection
-					m_TxCounter++;
-				}
-				
-				std::this_thread::sleep_for(std::chrono::milliseconds(1)); // TBD, DATA RATE
+					std::cout << "No callback, ERROR" << std::endl << std::endl;
+					break; // no sense to do anything without callback
+				}								
 			} while (1);
 		}
 
 		// client disconnected, error
 		std::cout << "Disconnected" << std::endl << std::endl;
 		close(clientSock);
-		std::this_thread::sleep_for(std::chrono::seconds(10));
+		std::this_thread::sleep_for(std::chrono::seconds(1));
 	}
 }
-

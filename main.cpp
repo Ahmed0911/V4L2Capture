@@ -2,19 +2,19 @@
 #include <stdlib.h>
 #include <memory.h>
 #include <fcntl.h>
+#include <iostream>
 #include <unistd.h>
 #include <sys/ioctl.h>
 #include <linux/videodev2.h>
 #include <sys/mman.h>
-//#include <errno.h>
-//#include <sys/types.h>
-//#include <sys/stat.h>
+#include "CommonStructs.h"
+#include "CommunicationMgr.h"
 
-#include "tcpserver.h"
+// Server
+#define TCPINTERFACE "0.0.0.0"
+#define TCPPORT 80
 
-#define SERVER_PORT 2000
-#define LOCAL_IP "192.168.0.10"
-
+// Camera
 #define DEV "/dev/video0"
 #define NUMOFBUFFERS 5
 
@@ -22,7 +22,8 @@
 int main()
 {
 	// Start Server
-	TCPServer server(LOCAL_IP, SERVER_PORT);	
+	std::cout << "Starting Communication Manager...\n";
+	CommunicationMgr commMgr{ TCPINTERFACE, TCPPORT };
 
 	// Open device
 	int fd = open(DEV, O_RDWR);
@@ -150,11 +151,21 @@ int main()
 		}
 
 		// Frame retrieved, do something
-		//printf("Buffer: %d, Image size: %d, Sequence: %d\n", bufferinfo.index, bufferinfo.bytesused, bufferinfo.sequence);
+		printf("Buffer: %d, Image size: %d, Sequence: %d\n", bufferinfo.index, bufferinfo.bytesused, bufferinfo.sequence);
 
-		// Send Data To Server
-		server.SendData(reinterpret_cast<uint8_t*>(imageBuffer[bufferinfo.index]), bufferinfo.bytesused);	
+		// Set some data
+		SClientData data;
+		data.Timestamp = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count(); // microseconds after epoch, this is not steady clock!
 
+		// Update Comm Data
+		commMgr.SetData(data);
+
+		// Send Next Frame (make copy)
+		SImage image{ new uint8_t[bufferinfo.bytesused], bufferinfo.bytesused, true, 0};
+		memcpy(image.ImagePtr, imageBuffer[bufferinfo.index], bufferinfo.bytesused);
+		commMgr.PushImage(image);
+
+		
 		// Queue next buffer (i.e. release retrieved buffer)
 		// Index is the same as DQ buffer
 		bufferinfo.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
